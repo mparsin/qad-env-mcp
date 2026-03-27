@@ -1,0 +1,22 @@
+[project]
+name = "qad-env-mcp"
+version = "0.1.0"
+description = "MCP server for managing QAD Adaptive ERP environments via SSH"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "asyncssh>=2.17.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+qad-env-mcp = "qad_env_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qad_env_mcp"]
