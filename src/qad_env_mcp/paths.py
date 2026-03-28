@@ -14,6 +14,10 @@ MAIN_CONFIG = f"{CONFIG_DIR}/qad-qracore.properties"
 
 # Deployed WAR lib directory — JAR filenames encode module versions
 LIB_DIR = "servers/tomcat-webui/webapps/qad-central/WEB-INF/lib"
+LIB_ABS = f"{SYSTEST_ROOT}/{LIB_DIR}"
+
+# Prefix for QAD application JARs (vs. third-party libraries)
+QAD_JAR_PREFIX = "qad-"
 
 # Log files (relative to SYSTEST_ROOT)
 LOG_DIR = "servers/tomcat-webui/logs"

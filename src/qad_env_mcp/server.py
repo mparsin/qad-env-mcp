@@ -21,8 +21,10 @@ from mcp.server.fastmcp import FastMCP
 
 from .paths import (
     CATALINA_LOG,
+    LIB_ABS,
     LIB_DIR,
     MAIN_CONFIG,
+    QAD_JAR_PREFIX,
     SYSTEST_ROOT,
     resolve_config_path,
     resolve_hostname,
@@ -352,19 +354,25 @@ async def get_version(
     env_id = _validate_env_id(env_id)
     hostname = resolve_hostname(env_id)
 
-    cmd = f"ls {SYSTEST_ROOT}/{LIB_DIR}/"
+    cmd = f"ls {LIB_ABS}/"
     result = await ssh.run(env_id, cmd)
 
     if not result.ok:
         return f"Failed to list JARs on {hostname}: {result.stderr}"
 
-    # Parse JAR filenames matching the {name}-webui-{version}.jar pattern
+    # Parse QAD application JARs (qad-*) — extract module name and version
     pattern = re.compile(r"^(.+)-webui-(.+)\.jar$")
     versions: list[tuple[str, str]] = []
     for filename in result.stdout.splitlines():
-        m = pattern.match(filename.strip())
+        name = filename.strip()
+        if not name.startswith(QAD_JAR_PREFIX):
+            continue
+        m = pattern.match(name)
         if m:
             versions.append((m.group(1), m.group(2)))
+        elif name.endswith(".jar"):
+            # QAD jar without -webui- convention — show full filename
+            versions.append((name.removesuffix(".jar"), ""))
 
     if module:
         module_lower = module.lower()
@@ -378,7 +386,7 @@ async def get_version(
         return f"No module versions{qualifier} found on {hostname}"
 
     versions.sort(key=lambda x: x[0])
-    lines = [f"  {name}: {ver}" for name, ver in versions]
+    lines = [f"  {name}: {ver}" if ver else f"  {name}" for name, ver in versions]
     header = f"Installed versions on {hostname}"
     if module:
         header += f" (filter: '{module}')"
