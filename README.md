@@ -121,6 +121,8 @@ Or add to `~/.claude/claude_code_config.json`:
 
 ## Available Tools
 
+### Core Tools
+
 | Tool | Description | Example prompt |
 |---|---|---|
 | `get_config` | Read configuration properties, optionally filtered by key | *"Show SSM config for abc123"* |
@@ -129,6 +131,42 @@ Or add to `~/.claude/claude_code_config.json`:
 | `yab_run` | Execute yab subcommands (status, restart, backup, etc.) | *"Restart tomcat on cdb546"* |
 | `run_command` | Run allowlisted read-only shell commands | *"Show disk usage on abc123"* |
 | `check_connectivity` | Test if an environment is reachable via SSH | *"Can you reach als2moherp5wcy?"* |
+| `get_version` | Show installed module versions | *"What version of webshell is on abc123?"* |
+
+### Diagnostics & Health
+
+| Tool | Description | Example prompt |
+|---|---|---|
+| `health_check` | Composite health dashboard: disk, memory, processes, OOM activity | *"Is abc123 healthy?"* |
+| `service_status` | Per-service status with PID, RSS, uptime, and port bindings | *"What services are running on xyz789?"* |
+| `tail_live_errors` | Grep for errors across all Tomcat logs in one call | *"Show recent errors on abc123"* |
+| `thread_dump` | Capture a JVM thread dump via SIGQUIT (non-destructive) | *"Get a thread dump from tomcat-qxtend on xyz789"* |
+| `database_status` | Progress OpenEdge DB processes, connection counts, AppServer | *"Check the database on abc123"* |
+| `pool_config_tuner` | Analyze Hikari pool settings and flag under-provisioned pools | *"Are the connection pool settings OK on abc123?"* |
+
+### Configuration & Versions
+
+| Tool | Description | Example prompt |
+|---|---|---|
+| `compare_configs` | Diff a config file between two environments | *"What's different in qracore config between abc123 and xyz789?"* |
+| `compare_versions` | Version matrix across 2+ environments | *"Compare module versions on abc123, xyz789, and def456"* |
+
+### Disk & Backups
+
+| Tool | Description | Example prompt |
+|---|---|---|
+| `disk_cleanup` | Identify disk usage hotspots (logs, backups, temp) | *"What's eating disk on abc123?"* |
+| `backup_info` | List available backups with timestamps and sizes | *"What backups exist on xyz789?"* |
+
+### Registry
+
+| Tool | Description | Example prompt |
+|---|---|---|
+| `register_environment` | Register an environment with optional alias/tags | *"Register abc123 as my-staging-env"* |
+| `unregister_environment` | Remove an environment from the registry | *"Forget abc123"* |
+| `add_alias` | Add a friendly alias to a registered environment | *"Alias abc123 as prod-demo"* |
+| `list_environments` | List registered environments, optionally filtered by tag | *"List all staging environments"* |
+| `search_environments` | Search by keyword across ID, aliases, tags, owner | *"Find environments owned by maxim"* |
 
 ### yab Subcommands
 

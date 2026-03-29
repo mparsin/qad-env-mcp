@@ -23,21 +23,51 @@ QAD_JAR_PREFIX = "qad-"
 LOG_DIR = "servers/tomcat-webui/logs"
 CATALINA_LOG = f"{LOG_DIR}/catalina.out"
 
+# Additional Tomcat log files
+QXTEND_LOG = "servers/tomcat-qxtend/logs/catalina.out"
+EVENTSERVICE_LOG = "servers/tomcat-eventservice/logs/catalina.out"
+DEFAULT_LOG = "servers/tomcat-default/logs/catalina.out"
+
+# Backup directory
+BACKUP_DIR = "backup"
+
+# YAB log directory
+YAB_LOG_DIR = "log"
+
+# All Tomcat service names mapped to their log paths and process identifiers
+TOMCAT_SERVICES: dict[str, dict[str, str]] = {
+    "tomcat-webui": {
+        "log": CATALINA_LOG,
+        "grep": "tomcat-webui",
+    },
+    "tomcat-qxtend": {
+        "log": QXTEND_LOG,
+        "grep": "tomcat-qxtend",
+    },
+    "tomcat-eventservice": {
+        "log": EVENTSERVICE_LOG,
+        "grep": "tomcat-eventservice",
+    },
+    "tomcat-default": {
+        "log": DEFAULT_LOG,
+        "grep": "tomcat-default",
+    },
+}
+
 # Well-known log files that can be requested by short name
 LOG_ALIASES: dict[str, str] = {
     "catalina": CATALINA_LOG,
     "catalina.out": CATALINA_LOG,
-    # Add more as you discover them:
-    # "access": f"{LOG_DIR}/localhost_access_log.txt",
-    # "gc": f"{LOG_DIR}/gc.log",
+    "webui": CATALINA_LOG,
+    "qxtend": QXTEND_LOG,
+    "eventservice": EVENTSERVICE_LOG,
+    "default": DEFAULT_LOG,
 }
 
 # Well-known config files that can be requested by short name
 CONFIG_ALIASES: dict[str, str] = {
     "main": MAIN_CONFIG,
     "qracore": MAIN_CONFIG,
-    # Add more as you discover them:
-    # "logging": f"{CONFIG_DIR}/logback.xml",
 }
 
 DNS_SUFFIX = "environments.qad.com"
