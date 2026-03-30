@@ -138,8 +138,14 @@ class SSHManager:
             cwd: Working directory (defaults to SYSTEST_ROOT)
         """
         effective_cwd = cwd or SYSTEST_ROOT
-        # Wrap command with cd so yab and relative paths work
-        full_command = f"cd {effective_cwd} && {command}"
+        # Source the login profile so PATH and aliases are available
+        # (SSH non-interactive sessions skip .bashrc/.profile).
+        # Then cd to the working directory so yab and relative paths work.
+        full_command = (
+            f"source /etc/profile 2>/dev/null; source ~/.bash_profile 2>/dev/null; "
+            f"source ~/.bashrc 2>/dev/null; "
+            f"cd {effective_cwd} && {command}"
+        )
 
         async with self._semaphore:
             conn = await self._get_connection(env_id)
