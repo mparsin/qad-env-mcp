@@ -1131,7 +1131,7 @@ async def compare_versions(
     mismatches = 0
     for mod in sorted_modules:
         vers = [vmap.get(mod, "(missing)") for vmap in all_versions]
-        marker = "  *** MISMATCH" if len(set(vers)) > 1 else ""
+        marker = "  *** MISMATC=H" if len(set(vers)) > 1 else ""
         if marker:
             mismatches += 1
         row = f"{mod:<{label_w}}" + "".join(f"{v:<{col_w}}" for v in vers) + marker
