@@ -63,17 +63,33 @@ Tool selection guide:
   update command help. This is the ONLY tool for yab version info.
 - yab_run: Execute quick yab commands (status, start, stop, restart).
   Do NOT use for version or help — use yab_help instead.
-- yab_start / yab_status: For long-running yab operations (update, backup,
-  install, restore, deploy). yab_start kicks off the command in the background;
-  yab_status polls progress and output.
+  Do NOT use for backup or restore — use database_backup / database_restore instead.
+- yab_start / yab_status: For long-running yab operations (update, install, deploy).
+  yab_start kicks off the command in the background; yab_status polls progress.
+  Do NOT use yab_start for backup or restore — use database_backup / database_restore.
+- database_backup: ALWAYS use this for database backups. It runs in the background
+  automatically. Choose the right method based on context:
+    - User wants env to stay running (e.g. "backup before config change"):
+      use method="environment-online-backup"
+    - User wants a full reliable backup or doesn't specify:
+      use method="environment-offline-backup" (default)
+    - User wants database-only backup:
+      use method="database-all-backup" or "database-backup" (older EE)
+    - User wants a named backup: add tag="descriptive-name"
+      (only effective when dbbackup.timestamp=false)
+  After starting, ALWAYS call yab_status() to monitor progress — do not wait
+  for the user to ask. Poll until completion or report initial progress.
+- database_restore: Restore a database from backup. DESTRUCTIVE — requires confirm=True.
+    Use tag= to restore a specific named backup. For database-all-restore and
+    database-restore methods, environment must be stopped first (tool checks this).
+    WARNING: running yab update after restore may reload system data (AB-21244).
+- database_backup_manage: List or remove database backups. Use scope= to choose:
+    "all" (default), "environment", or "database".
+- backup_info: Backup config, filesystem view of backup files, sizes and ages.
 - read_config / update_config: View or modify QAD property files.
 - tail_log: Read recent log entries from Tomcat or other services.
 - list_jars: List deployed QAD module JARs (WAR/lib). NOT for yab version.
 - run_command: Escape hatch for allowlisted shell commands (df, ps, etc.).
-- database_backup: Create a database backup (offline, online, or database-only).
-- database_restore: Restore a database from backup. DESTRUCTIVE — requires confirm=True.
-- database_backup_manage: List or remove database backups.
-- backup_info: Quick filesystem-level view of backup files and sizes.
 - health_check / service_status / db_status: Diagnostics and monitoring.""",
 )
 
@@ -111,10 +127,12 @@ YAB_BACKUP_COMMANDS = {
     "environment-offline-backup",
     "environment-online-backup",
     "database-all-backup",
+    "database-backup",
 }
 YAB_RESTORE_COMMANDS = {
     "environment-restore",
     "database-all-restore",
+    "database-restore",
 }
 
 
@@ -287,7 +305,8 @@ async def yab_run(
         stop                  - Stop Tomcat (requires confirmation)
         start                 - Start Tomcat (requires confirmation)
         update                - Update the environment (use yab_start for this)
-        backup                - Backup the database (use yab_start for this)
+
+    Do NOT use this tool for backup or restore — use database_backup() or database_restore() instead.
 
     Useful options (placed BEFORE the command):
         -v                    - Verbose: write log messages to console
@@ -308,6 +327,18 @@ async def yab_run(
     for val, label in [(command, "command"), (options, "options")]:
         if any(c in val for c in [";", "|", "&", "`", "$", "(", ")"]):
             return f"Error: Invalid characters in {label}."
+
+    # Reject backup/restore commands — must use dedicated tools
+    if command in YAB_BACKUP_COMMANDS:
+        return (
+            f"Error: Use the database_backup() tool for '{command}', not yab_run.\n"
+            f"Example: database_backup(env_id=\"{env_id}\", method=\"{command}\")"
+        )
+    if command in YAB_RESTORE_COMMANDS:
+        return (
+            f"Error: Use the database_restore() tool for '{command}', not yab_run.\n"
+            f"Example: database_restore(env_id=\"{env_id}\", method=\"{command}\", confirm=True)"
+        )
 
     # Warn about destructive commands (the LLM should confirm with user)
     warning = ""
@@ -346,10 +377,12 @@ async def yab_start(
     command: str,
     options: str = "-v",
 ) -> str:
-    """Start a long-running yab command in the background (update, backup, install, etc.).
+    """Start a long-running yab command in the background (update, install, deploy, etc.).
 
     The command runs via nohup so it survives disconnection. Use yab_status()
     to monitor progress and retrieve output.
+
+    Do NOT use this for backup or restore — use database_backup() or database_restore() instead.
 
     Syntax: yab [options] COMMAND
     Options are placed BEFORE the command.
@@ -361,7 +394,7 @@ async def yab_start(
 
     Args:
         env_id: Environment identifier (e.g. 'als2moherp5wcy')
-        command: The yab command to execute (e.g. 'update', 'backup')
+        command: The yab command to execute (e.g. 'update', 'install', 'deploy')
         options: Yab options placed before the command (default: '-v' for verbose output)
     """
     env_id = _validate_env_id(env_id)
@@ -372,6 +405,18 @@ async def yab_start(
         if any(c in val for c in [";", "|", "&", "`", "$", "(", ")"]):
             return f"Error: Invalid characters in {label}."
 
+    # Reject backup/restore commands — must use dedicated tools
+    if command in YAB_BACKUP_COMMANDS:
+        return (
+            f"Error: Use the database_backup() tool for '{command}', not yab_start.\n"
+            f"Example: database_backup(env_id=\"{env_id}\", method=\"{command}\")"
+        )
+    if command in YAB_RESTORE_COMMANDS:
+        return (
+            f"Error: Use the database_restore() tool for '{command}', not yab_start.\n"
+            f"Example: database_restore(env_id=\"{env_id}\", method=\"{command}\", confirm=True)"
+        )
+
     # yab syntax: yab [options] COMMAND
     yab_cmd = f"yab {options} {command}".strip() if options else f"yab {command}"
 
@@ -379,12 +424,27 @@ async def yab_start(
     log_file = f"{YAB_LOG_PREFIX}_{hostname}_{command}.log"
     pid_file = f"{YAB_LOG_PREFIX}_{hostname}_{command}.pid"
 
+    # Check if this command is already running
+    check_cmd = (
+        f"test -f {pid_file} && pid=$(cat {pid_file}) && "
+        f"kill -0 $pid 2>/dev/null && echo \"RUNNING:$pid\" || echo \"NONE\""
+    )
+    check = await ssh.run(env_id, check_cmd, timeout=10.0)
+    if check.ok and check.stdout.strip().startswith("RUNNING:"):
+        existing_pid = check.stdout.strip().split(":")[1]
+        return (
+            f"A '{command}' job is already running on {hostname} (PID {existing_pid}).\n"
+            f"Log file: {log_file}\n\n"
+            f"Use yab_status(env_id=\"{env_id}\", command=\"{command}\") to check progress.\n"
+            f"Do NOT start another — wait for this one to finish."
+        )
+
     # Clean up any previous log, start command in background.
     # nohup runs in a subshell, so we must cd to SYSTEST_ROOT explicitly
     # (the cd prepended by ssh.run applies to the outer shell only).
     launch_cmd = (
         f"rm -f {log_file} {pid_file} && "
-        f"nohup bash -lc 'cd {SYSTEST_ROOT} && {yab_cmd}' > {log_file} 2>&1 & "
+        f"nohup bash -c 'cd {SYSTEST_ROOT} && {yab_cmd}' > {log_file} 2>&1 & "
         f"echo $! | tee {pid_file}"
     )
 
@@ -1308,6 +1368,8 @@ async def backup_info(env_id: str) -> str:
     backup_root = f"{SYSTEST_ROOT}/{BACKUP_DIR}"
 
     checks: list[tuple[str, str]] = [
+        ("Backup configuration (yab)",
+            f"cd {SYSTEST_ROOT} && yab config dbbackup.dir dbbackup.timestamp dbbackup.timestampmax dbbackup.compress dbbackup.delaycompression 2>/dev/null || echo '(cannot read yab config)'"),
         ("Backup directory exists",
             f"test -d {backup_root} && echo 'YES' || echo 'NO'"),
         ("Backup directory size",
@@ -1342,22 +1404,44 @@ async def backup_info(env_id: str) -> str:
 async def database_backup(
     env_id: str,
     method: str = "environment-offline-backup",
+    tag: str | None = None,
 ) -> str:
     """Create a database backup on a QAD environment.
 
-    Available backup methods (from Confluence: YAB - Database Backup and Restore):
-        environment-offline-backup  - Full offline backup (environment is stopped first).
-                                      Most reliable method. (default)
-        environment-online-backup   - Online backup while environment stays running.
-                                      Less disruptive but may have consistency caveats.
-        database-all-backup         - Backup all databases without environment lifecycle.
+    This is the ONLY tool for creating backups. Do not use yab_run or yab_start.
 
-    The backup runs in the background. Use yab_status() to monitor progress.
+    The backup runs in the background via nohup. After calling this tool,
+    ALWAYS follow up with yab_status(env_id, command=method) to monitor
+    progress — do not wait for the user to ask.
+
+    Method selection guide:
+        environment-offline-backup  - Use when the user wants maximum reliability or
+                                      says "full backup" or does not specify a preference.
+                                      Stops the environment during backup. (default)
+        environment-online-backup   - Use when the user wants the environment to stay
+                                      running (e.g. "backup before config change",
+                                      "quick backup", "backup without downtime").
+        database-all-backup         - Use when the user says "database only" or
+                                      "just the databases" (all Progress DBs, no env
+                                      lifecycle).
+        database-backup             - Use for single Progress database backup on older
+                                      EE environments.
+
+    Tag behaviour (from YAB docs):
+        When dbbackup.timestamp=true (default), backups auto-name with timestamps
+        and the -tag option is ignored.
+        When dbbackup.timestamp=false, the -tag option names the backup subdirectory
+        under dbbackup.dir. Without -tag, backups go to a "default" subdirectory
+        and overwrite any existing backup there.
 
     Args:
         env_id: Environment identifier (e.g. 'als2moherp5wcy')
         method: Backup method — one of 'environment-offline-backup',
-                'environment-online-backup', or 'database-all-backup'
+                'environment-online-backup', 'database-all-backup', or
+                'database-backup'. Choose based on context.
+        tag: Optional backup tag name (e.g. '20260330pre-upgrade'). Creates a
+             named subdirectory under dbbackup.dir. Only effective when
+             dbbackup.timestamp=false. Use descriptive names like YYYYMMDD+context.
     """
     env_id = _validate_env_id(env_id)
     hostname = resolve_hostname(env_id)
@@ -1370,24 +1454,68 @@ async def database_backup(
         )
 
     yab_cmd = f"yab -v {method}"
+    if tag:
+        # Sanitize tag: allow alphanumeric, hyphens, underscores, dots only
+        safe_tag = re.sub(r"[^a-zA-Z0-9._-]", "", tag)
+        if not safe_tag:
+            return "Error: Tag contains no valid characters. Use alphanumeric, hyphens, underscores, or dots."
+        yab_cmd += f" -tag:{safe_tag}"
     log_file = f"{YAB_LOG_PREFIX}_{hostname}_{method}.log"
     pid_file = f"{YAB_LOG_PREFIX}_{hostname}_{method}.pid"
 
+    # Check if a backup of this type is already running
+    check_cmd = (
+        f"test -f {pid_file} && pid=$(cat {pid_file}) && "
+        f"kill -0 $pid 2>/dev/null && echo \"RUNNING:$pid\" || echo \"NONE\""
+    )
+    check = await ssh.run(env_id, check_cmd, timeout=10.0)
+    if check.ok and check.stdout.strip().startswith("RUNNING:"):
+        existing_pid = check.stdout.strip().split(":")[1]
+        return (
+            f"A '{method}' backup is already running on {hostname} (PID {existing_pid}).\n"
+            f"Log file: {log_file}\n\n"
+            f"Use yab_status(env_id=\"{env_id}\", command=\"{method}\") to monitor progress.\n"
+            f"Do NOT start another backup — wait for this one to finish."
+        )
+
     launch_cmd = (
         f"rm -f {log_file} {pid_file} && "
-        f"nohup bash -lc 'cd {SYSTEST_ROOT} && {yab_cmd}' > {log_file} 2>&1 & "
+        f"nohup bash -c 'cd {SYSTEST_ROOT} && {yab_cmd}' > {log_file} 2>&1 & "
         f"echo $! | tee {pid_file}"
     )
 
-    result = await ssh.run(env_id, launch_cmd, timeout=15.0)
-    if not result.ok:
-        return f"Failed to start backup on {hostname}: {result.stderr}"
+    result = await ssh.run(env_id, launch_cmd, timeout=30.0)
 
-    pid = result.stdout.strip()
+    if result.ok:
+        pid = result.stdout.strip()
+        return (
+            f"Started `{yab_cmd}` on {hostname} (PID {pid}).\n"
+            f"Log file: {log_file}\n\n"
+            f"Use yab_status(env_id=\"{env_id}\", command=\"{method}\") to monitor progress."
+        )
+
+    # Launch timed out or failed — check if the process started anyway
+    # (nohup may have succeeded before the SSH channel returned)
+    verify_cmd = (
+        f"test -f {pid_file} && pid=$(cat {pid_file}) && "
+        f"kill -0 $pid 2>/dev/null && echo \"RUNNING:$pid\" || echo \"NONE\""
+    )
+    verify = await ssh.run(env_id, verify_cmd, timeout=10.0)
+    if verify.ok and verify.stdout.strip().startswith("RUNNING:"):
+        pid = verify.stdout.strip().split(":")[1]
+        return (
+            f"Started `{yab_cmd}` on {hostname} (PID {pid}).\n"
+            f"(SSH was slow but the backup launched successfully.)\n"
+            f"Log file: {log_file}\n\n"
+            f"Use yab_status(env_id=\"{env_id}\", command=\"{method}\") to monitor progress."
+        )
+
     return (
-        f"Started `{yab_cmd}` on {hostname} (PID {pid}).\n"
-        f"Log file: {log_file}\n\n"
-        f"Use yab_status(env_id=\"{env_id}\", command=\"{method}\") to monitor progress."
+        f"Failed to start backup on {hostname}: {result.stderr}\n\n"
+        f"The backup process did not launch. This is likely an SSH connectivity "
+        f"issue with {hostname} (server under load, network timeout, etc.).\n"
+        f"Retry this same database_backup() call. "
+        f"Do NOT use yab_run or yab_start as a workaround — they will reject backup commands."
     )
 
 
@@ -1395,6 +1523,7 @@ async def database_backup(
 async def database_restore(
     env_id: str,
     method: str = "environment-restore",
+    tag: str | None = None,
     confirm: bool = False,
 ) -> str:
     """Restore a database backup on a QAD environment.
@@ -1402,21 +1531,29 @@ async def database_restore(
     *** DESTRUCTIVE OPERATION — requires confirm=True ***
 
     This will overwrite the current database with a previously created backup.
-    The environment must typically be stopped before restoring.
 
-    Available restore methods (from Confluence: YAB - Database Backup and Restore):
-        environment-restore    - Full environment restore from default backup tag.
-                                 Handles stop/start lifecycle. (default)
-        database-all-restore   - Restore all databases without environment lifecycle.
-                                 Environment must already be stopped.
+    Available restore methods:
+        environment-restore    - Full environment restore. Handles stop/start
+                                 lifecycle automatically. (default)
+        database-all-restore   - Restore all Progress databases. The environment
+                                 MUST already be stopped (`yab stop` first).
+        database-restore       - Restore single Progress database (older EE envs).
+                                 Environment MUST already be stopped.
 
-    After restore, you should typically run an update: yab_start(env_id, "update")
+    *** WARNING (AB-21244): Running `yab update` after a database-restore resets
+    an internal ID, causing system data (browses, Reporting Framework) to reload
+    and overwrite customisations. If you need to preserve those changes, consider
+    using `prorest <database> <backup file>` manually instead of yab restore. ***
 
     The restore runs in the background. Use yab_status() to monitor progress.
 
     Args:
         env_id: Environment identifier (e.g. 'als2moherp5wcy')
-        method: Restore method — 'environment-restore' or 'database-all-restore'
+        method: Restore method — 'environment-restore', 'database-all-restore',
+                or 'database-restore'.
+        tag: Optional backup tag to restore from (e.g. '20260330pre-upgrade').
+             Selects which backup subdirectory under dbbackup.dir to use.
+             Without -tag, restores from the "default" subdirectory.
         confirm: Must be set to True to proceed. This is a destructive operation
                  that overwrites the current database.
     """
@@ -1429,7 +1566,9 @@ async def database_restore(
             f"⚠️  DATABASE RESTORE is a destructive operation on {hostname}.\n"
             f"This will OVERWRITE the current database with the backup.\n\n"
             f"To proceed, call database_restore with confirm=True.\n"
-            f"Make sure you have a current backup before restoring."
+            f"Make sure you have a current backup before restoring.\n\n"
+            f"⚠️  Note (AB-21244): Running `yab update` after restore reloads system data\n"
+            f"and may overwrite browse/Reporting Framework customisations."
         )
 
     if method not in YAB_RESTORE_COMMANDS:
@@ -1438,7 +1577,27 @@ async def database_restore(
             f"Valid methods: {', '.join(sorted(YAB_RESTORE_COMMANDS))}"
         )
 
+    # For methods that require the environment to be stopped, verify status first
+    if method in ("database-all-restore", "database-restore"):
+        status_result = await ssh.run(
+            env_id, f"cd {SYSTEST_ROOT} && yab status 2>&1 | head -5", timeout=30.0
+        )
+        status_out = status_result.stdout.lower()
+        if "started" in status_out and "ok" in status_out:
+            return (
+                f"Error: Method '{method}' requires the environment to be stopped first.\n"
+                f"The environment on {hostname} appears to still be running.\n\n"
+                f"Run `yab stop` first (via yab_run), then retry the restore.\n"
+                f"Or use method='environment-restore' which handles stop/start automatically."
+            )
+
     yab_cmd = f"yab -v {method}"
+    if tag:
+        safe_tag = re.sub(r"[^a-zA-Z0-9._-]", "", tag)
+        if not safe_tag:
+            return "Error: Tag contains no valid characters. Use alphanumeric, hyphens, underscores, or dots."
+        yab_cmd += f" -tag:{safe_tag}"
+
     log_file = f"{YAB_LOG_PREFIX}_{hostname}_{method}.log"
     pid_file = f"{YAB_LOG_PREFIX}_{hostname}_{method}.pid"
 
@@ -1457,7 +1616,8 @@ async def database_restore(
         f"Started `{yab_cmd}` on {hostname} (PID {pid}).\n"
         f"Log file: {log_file}\n\n"
         f"Use yab_status(env_id=\"{env_id}\", command=\"{method}\") to monitor progress.\n\n"
-        f"After restore completes, run an update: yab_start(env_id=\"{env_id}\", command=\"update\")"
+        f"⚠️  After restore, be cautious with `yab update` — it may reload system data\n"
+        f"and overwrite browse/Reporting Framework customisations (see AB-21244)."
     )
 
 
@@ -1465,34 +1625,54 @@ async def database_restore(
 async def database_backup_manage(
     env_id: str,
     action: str = "list",
+    scope: str = "all",
     confirm: bool = False,
 ) -> str:
     """List or remove database backups on a QAD environment.
 
     Actions:
-        list   - List all available database backups (default). Non-destructive.
+        list   - List available backups (default). Non-destructive.
         remove - Remove all database backups. Requires confirm=True.
 
-    Uses yab database-all-backup-list and database-all-backup-remove commands.
+    Scope controls which yab list command is used:
+        all         - database-all-backup-list (all Progress DBs, default)
+        environment - environment-backup-list (full environment backups including
+                      Mongo, files, etc.)
+        database    - database-backup-list (single Progress DB, older EE envs)
 
     Args:
         env_id: Environment identifier (e.g. 'als2moherp5wcy')
         action: 'list' to show backups, 'remove' to delete them
+        scope: 'all' (default), 'environment', or 'database' — selects which
+               yab backup-list command to use
         confirm: Required for 'remove' action (destructive operation)
     """
     env_id = _validate_env_id(env_id)
     hostname = resolve_hostname(env_id)
     action = action.strip().lower()
+    scope = scope.strip().lower()
+
+    list_commands = {
+        "all": "database-all-backup-list",
+        "environment": "environment-backup-list",
+        "database": "database-backup-list",
+    }
 
     if action == "list":
+        yab_list_cmd = list_commands.get(scope)
+        if not yab_list_cmd:
+            return (
+                f"Error: Unknown scope '{scope}'. "
+                f"Valid scopes: {', '.join(sorted(list_commands))}"
+            )
         result = await ssh.run(
-            env_id, f"cd {SYSTEST_ROOT} && yab database-all-backup-list", timeout=120.0
+            env_id, f"cd {SYSTEST_ROOT} && yab {yab_list_cmd}", timeout=120.0
         )
         output = result.stdout
         if result.stderr:
             output += f"\n--- stderr ---\n{result.stderr}"
         status = "✓" if result.ok else "✗"
-        return f"{status} Database backup list on {hostname}:\n\n{output}"
+        return f"{status} Backup list ({yab_list_cmd}) on {hostname}:\n\n{output}"
 
     elif action == "remove":
         if not confirm:
