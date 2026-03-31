@@ -44,3 +44,21 @@ no manual grep-ing through `WEB-INF/lib`.
 
 On the recorded run, `qad-webshell` was at `2.39.995.5` and `qad-qracore` at `3.39.995.6` across
 the full module list (58 modules detected).
+
+https://github.com/user-attachments/assets/8cb7ef92-bcbe-48df-8231-75568b947b85
+
+
+## Clip 04 — Toggle a feature flag during development
+
+**What this demonstrates**
+
+Feature flags let you test a code path on your environment without it being visible to anyone else.
+The old approach was editing an SSM parameter directly or changing a properties file and restarting.
+With `qfm` you toggle a flag with a single prompt — no restart required, and it is trivially
+reversible.
+
+This clip shows the full iteration loop: check which flags are active, turn one on, verify the
+behaviour in the browser, then turn it off again so teammates are unaffected. The flag used in the
+recording is `menu-search-ranking`, which was `off` on `development` at the start of the clip.
+
+https://github.com/user-attachments/assets/f8dd03eb-4f9a-4027-9172-9b180dcf283f
