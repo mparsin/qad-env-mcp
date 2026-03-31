@@ -1,16 +1,18 @@
-Two MCP servers — **qad-env** and **qfm** — let you manage QAD Linux environments and feature flags
+Two MCP servers — **qad-env-mcp** and **qfm-mcp** — let you manage QAD Linux environments and feature flags
 directly from Claude Desktop using natural language. No SSH, no properties files, no yab commands to
-memorise.
+memorize.
 
 The clips below show real prompts against a live environment. Each scenario covers a task that comes
 up regularly during development.
 
 ## Clip 01 — Environment status at a glance
 
+**What this demonstrates**
+
 Before starting work (or sharing an environment with a teammate), it is useful to know whether all
 59 services are running and whether disk is under control. Normally this means SSH-ing in and running
 yab status, then separately checking df -h on the right mount point.
-With qad-env you ask in plain English and get a structured answer back immediately — service-by-service
+With qad-env-mcp you ask in plain English and get a structured answer back immediately — service-by-service
 status across every Tomcat, database, PAS appserver, Kafka, Elasticsearch, and more, followed by a disk
 breakdown showing where space is being used (tomcat-webui/catalina.out was 61 MB on the recorded run,
 nifi/work at 848 MB). If anything is wrong, the follow-up is one more prompt.
@@ -20,11 +22,13 @@ https://github.com/user-attachments/assets/94f4e810-10c4-471d-b173-cd49a718f470
 
 ## Clip 02 — Backup the database before a risky change
 
+**What this demonstrates**
+
 Any time you are about to touch configuration or run a destructive yab command, the right habit is to
 take a database snapshot first. Without tooling, this means SSHing in, navigating to the systest root,
 and running a yab backup command — then waiting and hoping the output confirms success.
 
-With `qad-env` you start the backup with one prompt, get confirmation, then move straight into the config
+With `qad-env-mcp` you start the backup with one prompt, get confirmation, then move straight into the config
 change and restart in the same conversation. The whole workflow — backup, change, restart — stays in one
 place with a readable audit trail.
 
@@ -42,9 +46,6 @@ This clip shows the full cycle: check current versions, trigger an update, then 
 against staging. The version matrix makes drift immediately visible — per module, per environment,
 no manual grep-ing through `WEB-INF/lib`.
 
-On the recorded run, `qad-webshell` was at `2.39.995.5` and `qad-qracore` at `3.39.995.6` across
-the full module list (58 modules detected).
-
 https://github.com/user-attachments/assets/8cb7ef92-bcbe-48df-8231-75568b947b85
 
 
@@ -54,7 +55,7 @@ https://github.com/user-attachments/assets/8cb7ef92-bcbe-48df-8231-75568b947b85
 
 Feature flags let you test a code path on your environment without it being visible to anyone else.
 The old approach was editing an SSM parameter directly or changing a properties file and restarting.
-With `qfm` you toggle a flag with a single prompt — no restart required, and it is trivially
+With `qfm-mcp` you toggle a flag with a single prompt — no restart required, and it is trivially
 reversible.
 
 This clip shows the full iteration loop: check which flags are active, turn one on, verify the

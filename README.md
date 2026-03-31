@@ -15,7 +15,7 @@ Connect this to Claude Desktop, Cursor, or Claude Code and manage your environme
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - Corporate VPN connected (environments are on internal network)
-- SSH access to QAD environments (default: `mfg` / `qad`)
+- SSH access to QAD environments (credentials via environment variables)
 
 ## Installation
 
@@ -41,11 +41,11 @@ uv sync
 
 The server uses sensible defaults. Override via environment variables if needed:
 
-| Variable | Default | Description |
+| Variable | Required | Description |
 |---|---|---|
-| `QAD_SSH_USERNAME` | `mfg` | SSH username for all environments |
-| `QAD_SSH_PASSWORD` | `qad` | SSH password for all environments |
-| `QAD_SSH_PORT` | `22` | SSH port |
+| `QAD_SSH_USERNAME` | **yes** | SSH username for all environments |
+| `QAD_SSH_PASSWORD` | **yes** | SSH password for all environments |
+| `QAD_SSH_PORT` | no (default `22`) | SSH port |
 
 ## Client Setup
 
@@ -60,7 +60,8 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
     "qad-env": {
       "command": "qad-env-mcp",
       "env": {
-        "QAD_SSH_PASSWORD": "qad"
+        "QAD_SSH_USERNAME": "<your-username>",
+        "QAD_SSH_PASSWORD": "<your-password>"
       }
     }
   }
@@ -77,7 +78,8 @@ For local dev, use the full path:
       "command": "uv",
       "args": ["run", "--directory", "/path/to/qad-env-mcp", "qad-env-mcp"],
       "env": {
-        "QAD_SSH_PASSWORD": "qad"
+        "QAD_SSH_USERNAME": "<your-username>",
+        "QAD_SSH_PASSWORD": "<your-password>"
       }
     }
   }
@@ -94,7 +96,8 @@ Add to `.cursor/mcp.json` in your project root (or globally in `~/.cursor/mcp.js
     "qad-env": {
       "command": "qad-env-mcp",
       "env": {
-        "QAD_SSH_PASSWORD": "qad"
+        "QAD_SSH_USERNAME": "<your-username>",
+        "QAD_SSH_PASSWORD": "<your-password>"
       }
     }
   }
@@ -221,7 +224,7 @@ async def my_new_tool(env_id: str, param: str) -> str:
 
 ## Troubleshooting
 
-**"Cannot reach environment"** — Make sure your VPN is connected. Try `ssh mfg@{env_id}.environments.qad.com` manually.
+**"Cannot reach environment"** — Make sure your VPN is connected. Try `ssh $QAD_SSH_USERNAME@{env_id}.environments.qad.com` manually.
 
 **"Command timed out"** — Some yab operations (update, backup) can take several minutes. The timeout is 5 minutes for these. If you need longer, adjust `command_timeout` in `SSHManager`.
 

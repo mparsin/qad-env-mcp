@@ -54,7 +54,7 @@ class SSHManager:
     """Manages pooled SSH connections to QAD environments.
 
     Usage:
-        mgr = SSHManager(username="mfg", password="qad")
+        mgr = SSHManager(username="user", password="pass")
         result = await mgr.run("als2moherp5wcy", "yab status")
         await mgr.close()
     """

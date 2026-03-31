@@ -6,8 +6,7 @@ Supports configuration viewing/editing, log tailing, yab operations,
 and general environment inspection.
 
 Usage:
-    qad-env-mcp                              # uses defaults (mfg/qad)
-    QAD_SSH_PASSWORD=secret qad-env-mcp      # override password via env var
+    QAD_SSH_USERNAME=user QAD_SSH_PASSWORD=pass qad-env-mcp
 """
 
 from __future__ import annotations
@@ -94,8 +93,8 @@ Tool selection guide:
 )
 
 ssh = SSHManager(
-    username=os.environ.get("QAD_SSH_USERNAME", "mfg"),
-    password=os.environ.get("QAD_SSH_PASSWORD", "qad"),
+    username=os.environ["QAD_SSH_USERNAME"],
+    password=os.environ["QAD_SSH_PASSWORD"],
     port=int(os.environ.get("QAD_SSH_PORT", "22")),
 )
 
@@ -1813,7 +1812,7 @@ Catalina:   {SYSTEST_ROOT}/{CATALINA_LOG}
 yab:        cd {SYSTEST_ROOT} && yab <command>
 
 SSH Pattern: {{env_id}}.environments.qad.com
-Username:   mfg
+Username:   $QAD_SSH_USERNAME
 """
 
 
