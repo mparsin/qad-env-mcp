@@ -63,3 +63,19 @@ behaviour in the browser, then turn it off again so teammates are unaffected. Th
 recording is `menu-search-ranking`, which was `off` on `development` at the start of the clip.
 
 https://github.com/user-attachments/assets/f8dd03eb-4f9a-4027-9172-9b180dcf283f
+
+## Clip 05 — Investigate logs
+
+When something looks wrong in the UI, or you want to understand what the environment is doing
+after a restart or flag change, the first step is usually the logs. Without tooling this means
+SSH-ing in and `tail`-ing the right `catalina.out` out of the dozen or so Tomcat instances — and
+knowing which one to look at.
+
+`tail_live_errors` greps for `ERROR`, `FATAL`, `Exception`, and `OutOfMemory` across all Tomcats
+simultaneously and returns a unified timestamped feed. If the error scan comes back clean and you
+want to dig deeper, `run_command` lets you tail or grep a specific log file directly. On the
+recorded run, the error scan was clean, and the raw tail of `tomcat-webui/catalina.out` revealed
+recurring `WARN` entries from `UrlUtil` (null business keys on entity notifications) alongside
+`FeatureFlagService.refresh` lines confirming flag state was being picked up from SSM.
+
+https://github.com/user-attachments/assets/f8dd03eb-4f9a-4027-9172-9b180dcf283f
