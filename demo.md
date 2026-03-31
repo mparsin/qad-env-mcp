@@ -18,7 +18,7 @@ breakdown showing where space is being used (tomcat-webui/catalina.out was 61 MB
 nifi/work at 848 MB). If anything is wrong, the follow-up is one more prompt.
 Prompt used in the clip
 
-https://github.com/user-attachments/assets/94f4e810-10c4-471d-b173-cd49a718f470
+https://github.com/user-attachments/assets/08f0ddb5-d5c0-49a0-94c5-0ef5e814a01d
 
 ## Clip 02 — Backup the database before a risky change
 
@@ -78,4 +78,4 @@ recorded run, the error scan was clean, and the raw tail of `tomcat-webui/catali
 recurring `WARN` entries from `UrlUtil` (null business keys on entity notifications) alongside
 `FeatureFlagService.refresh` lines confirming flag state was being picked up from SSM.
 
-https://github.com/user-attachments/assets/f8dd03eb-4f9a-4027-9172-9b180dcf283f
+https://github.com/user-attachments/assets/20f2166a-c007-4ce3-a2bd-8525963341bf
