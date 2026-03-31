@@ -27,3 +27,20 @@ and running a yab backup command — then waiting and hoping the output confirms
 With `qad-env` you start the backup with one prompt, get confirmation, then move straight into the config
 change and restart in the same conversation. The whole workflow — backup, change, restart — stays in one
 place with a readable audit trail.
+
+https://github.com/user-attachments/assets/bc223ca4-1da0-44f8-a795-1593429ee29a
+
+## Clip 03 — Update the environment and verify versions
+
+**What this demonstrates**
+
+After a new build lands, the typical workflow is: run `yab update`, then check the deployed JAR
+versions to confirm the right modules came through. If you share the environment with others, you also
+want to know they are on the same versions — catching a mismatch before testing saves a lot of time.
+
+This clip shows the full cycle: check current versions, trigger an update, then compare the result
+against staging. The version matrix makes drift immediately visible — per module, per environment,
+no manual grep-ing through `WEB-INF/lib`.
+
+On the recorded run, `qad-webshell` was at `2.39.995.5` and `qad-qracore` at `3.39.995.6` across
+the full module list (58 modules detected).
