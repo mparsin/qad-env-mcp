@@ -18,3 +18,4 @@ build/
 
 # Claude Code
 .claude/worktrees/
+.mcp.json
