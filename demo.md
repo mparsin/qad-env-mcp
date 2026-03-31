@@ -16,7 +16,7 @@ breakdown showing where space is being used (tomcat-webui/catalina.out was 61 MB
 nifi/work at 848 MB). If anything is wrong, the follow-up is one more prompt.
 Prompt used in the clip
 
-https://github.com/mparsin/qad-env-mcp/raw/master/clips/register_health.mp4
+https://github.com/user-attachments/assets/94f4e810-10c4-471d-b173-cd49a718f470
 
 ## Clip 02 — Backup the database before a risky change
 
