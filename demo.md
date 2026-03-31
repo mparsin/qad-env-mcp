@@ -2,9 +2,10 @@ Two MCP servers — **qad-env** and **qfm** — let you manage QAD Linux environ
 directly from Claude Desktop using natural language. No SSH, no properties files, no yab commands to
 memorise.
 
-## Clip 01 — Environment status at a glance
 The clips below show real prompts against a live environment. Each scenario covers a task that comes
 up regularly during development.
+
+## Clip 01 — Environment status at a glance
 
 Before starting work (or sharing an environment with a teammate), it is useful to know whether all
 59 services are running and whether disk is under control. Normally this means SSH-ing in and running
@@ -15,7 +16,7 @@ breakdown showing where space is being used (tomcat-webui/catalina.out was 61 MB
 nifi/work at 848 MB). If anything is wrong, the follow-up is one more prompt.
 Prompt used in the clip
 
-[register_health.mp4](clips/register_health.mp4)
+<video src="clips/register_health.mp4" controls width="800"></video>
 
 ## Clip 02 — Backup the database before a risky change
 
