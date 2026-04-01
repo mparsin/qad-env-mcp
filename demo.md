@@ -1,5 +1,5 @@
 Two MCP servers — **qad-env-mcp** and **qfm-mcp** — let you manage QAD Linux environments and feature flags
-directly from Claude Desktop using natural language. No SSH, no properties files, no yab commands to
+directly from any MCP client such as Cursor or Claude Desktop using natural language. No SSH, no properties files, no yab commands to
 memorize.
 
 The clips below show real prompts against a live environment. Each scenario covers a task that comes
