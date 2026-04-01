@@ -79,3 +79,8 @@ recurring `WARN` entries from `UrlUtil` (null business keys on entity notificati
 `FeatureFlagService.refresh` lines confirming flag state was being picked up from SSM.
 
 https://github.com/user-attachments/assets/20f2166a-c007-4ce3-a2bd-8525963341bf
+
+
+## List of available tools:
+
+<img width="940" height="2171" alt="Image" src="https://github.com/user-attachments/assets/102f5d33-554e-4e1b-a224-602253e90a56" />
