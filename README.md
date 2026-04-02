@@ -10,6 +10,78 @@ Connect this to Claude Desktop, Cursor, or Claude Code and manage your environme
 - *"Restart tomcat on xyz789"*
 - *"Check if als2moherp5wcy is reachable"*
 
+## Quick Start (Step by Step)
+
+Follow these steps to get the MCP server running on your machine:
+
+1. **Install uv** (if you don't have it):
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. **Clone the repo:**
+   ```bash
+   git clone git@github.com:mparsin/qad-env-mcp.git
+   cd qad-env-mcp
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   uv sync
+   ```
+
+4. **Set your SSH credentials** (add to your `~/.zshrc` or `~/.bashrc`):
+   ```bash
+   export QAD_SSH_USERNAME="your-ssh-username"
+   export QAD_SSH_PASSWORD="your-ssh-password"
+   ```
+
+5. **Connect to your VPN** — environments are on the internal network.
+
+6. **Add the server to your AI client** — pick one:
+
+   **Claude Code** (quickest):
+   ```bash
+   claude mcp add qad-env -- uv run --directory /path/to/qad-env-mcp qad-env-mcp
+   ```
+
+   **Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+   ```json
+   {
+     "mcpServers": {
+       "qad-env": {
+         "command": "uv",
+         "args": ["run", "--directory", "/path/to/qad-env-mcp", "qad-env-mcp"],
+         "env": {
+           "QAD_SSH_USERNAME": "<your-username>",
+           "QAD_SSH_PASSWORD": "<your-password>"
+         }
+       }
+     }
+   }
+   ```
+
+   **Cursor** — add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
+   ```json
+   {
+     "mcpServers": {
+       "qad-env": {
+         "command": "uv",
+         "args": ["run", "--directory", "/path/to/qad-env-mcp", "qad-env-mcp"],
+         "env": {
+           "QAD_SSH_USERNAME": "<your-username>",
+           "QAD_SSH_PASSWORD": "<your-password>"
+         }
+       }
+     }
+   }
+   ```
+
+7. **Try it out** — open your AI client and ask:
+   > "Check if als2moherp5wcy is reachable"
+
+   If you get a response, you're all set.
+
 ## Prerequisites
 
 - Python 3.11+
@@ -23,16 +95,16 @@ Connect this to Claude Desktop, Cursor, or Claude Code and manage your environme
 
 ```bash
 # Using uv
-uv tool install git+https://your-gitlab.qad.com/platform/qad-env-mcp.git
+uv tool install git+https://github.com/mparsin/qad-env-mcp.git
 
 # Or using pip
-pip install git+https://your-gitlab.qad.com/platform/qad-env-mcp.git
+pip install git+https://github.com/mparsin/qad-env-mcp.git
 ```
 
 ### Option B: Local development
 
 ```bash
-git clone https://your-gitlab.qad.com/platform/qad-env-mcp.git
+git clone git@github.com:mparsin/qad-env-mcp.git
 cd qad-env-mcp
 uv sync
 ```
