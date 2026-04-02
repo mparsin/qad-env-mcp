@@ -28,6 +28,25 @@ QXTEND_LOG = "servers/tomcat-qxtend/logs/catalina.out"
 EVENTSERVICE_LOG = "servers/tomcat-eventservice/logs/catalina.out"
 DEFAULT_LOG = "servers/tomcat-default/logs/catalina.out"
 
+# CT Log (Financials BL debugging) — configuration.properties in build/config
+BUILD_CONFIG = "build/config/configuration.properties"
+BUILD_CONFIG_ABS = f"{SYSTEST_ROOT}/{BUILD_CONFIG}"
+
+# CT log property keys in configuration.properties
+CT_LOG_LEVEL_PROP = "fin.cbserverxml.debug-level"
+CT_LOG_DIR_PROP = "fin.cbserverxml.debug-directory"
+CT_LOG_LOGIN_PROP = "fin.cbserverxml.debug-login"
+
+# Default CT log output directory (relative to SYSTEST_ROOT)
+CT_LOG_DEFAULT_DIR = "build/logs"
+
+# Possible cbserver.xml locations (relative to SYSTEST_ROOT), checked in order
+CBSERVER_XML_PATHS = [
+    "build/work/config/cbserver.xml",
+    "config/cbserver.xml",
+    "config/fin/local/cbserver.xml",
+]
+
 # Backup directory
 BACKUP_DIR = "backup"
 

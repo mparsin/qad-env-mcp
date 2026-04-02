@@ -22,7 +22,13 @@ from mcp.server.fastmcp import FastMCP
 
 from .paths import (
     BACKUP_DIR,
+    BUILD_CONFIG_ABS,
     CATALINA_LOG,
+    CBSERVER_XML_PATHS,
+    CT_LOG_DEFAULT_DIR,
+    CT_LOG_DIR_PROP,
+    CT_LOG_LEVEL_PROP,
+    CT_LOG_LOGIN_PROP,
     LIB_ABS,
     LIB_DIR,
     MAIN_CONFIG,
@@ -89,7 +95,13 @@ Tool selection guide:
 - tail_log: Read recent log entries from Tomcat or other services.
 - list_jars: List deployed QAD module JARs (WAR/lib). NOT for yab version.
 - run_command: Escape hatch for allowlisted shell commands (df, ps, etc.).
-- health_check / service_status / db_status: Diagnostics and monitoring.""",
+- health_check / service_status / db_status: Diagnostics and monitoring.
+- ct_log_status: Check if CT (Financials BL) logging is enabled and show config.
+- ct_log_enable: Enable CT logging. Sets debug level in configuration.properties
+  and runs yab fin-cbserver-xml-update. Requires user confirmation.
+- ct_log_disable: Disable CT logging. Sets level to 0. Requires user confirmation.
+- ct_log_list: List CT log files in the debug directory.
+- ct_log_read: Read contents of a specific CT log file.""",
 )
 
 ssh = SSHManager(
@@ -1691,6 +1703,442 @@ async def database_backup_manage(
 
     else:
         return f"Error: Unknown action '{action}'. Valid actions: list, remove"
+
+
+# ---------------------------------------------------------------------------
+# CT Log tools (Financials BL debugging)
+# ---------------------------------------------------------------------------
+
+
+async def _find_cbserver_xml(env_id: str) -> str | None:
+    """Return the first existing cbserver.xml path (absolute), or None."""
+    for rel in CBSERVER_XML_PATHS:
+        result = await ssh.run(env_id, f"test -f {SYSTEST_ROOT}/{rel} && echo found")
+        if result.ok and "found" in result.stdout:
+            return f"{SYSTEST_ROOT}/{rel}"
+    return None
+
+
+async def _get_ct_debug_directory(env_id: str) -> str:
+    """Determine the CT log output directory from cbserver.xml or defaults."""
+    # 1. Check configuration.properties for explicit override
+    result = await ssh.run(
+        env_id,
+        f"grep '^{CT_LOG_DIR_PROP}=' {BUILD_CONFIG_ABS} 2>/dev/null",
+    )
+    if result.ok and result.stdout.strip():
+        val = result.stdout.strip().split("=", 1)[1].strip()
+        if val:
+            return val
+
+    # 2. Check cbserver.xml for <DebugDirectory>
+    xml_path = await _find_cbserver_xml(env_id)
+    if xml_path:
+        result = await ssh.run(
+            env_id,
+            f"grep -oP '<DebugDirectory>\\K[^<]+' {xml_path} 2>/dev/null",
+        )
+        if result.ok and result.stdout.strip():
+            return result.stdout.strip()
+
+    # 3. Fall back to default
+    return f"{SYSTEST_ROOT}/{CT_LOG_DEFAULT_DIR}"
+
+
+async def _set_build_config_prop(env_id: str, key: str, value: str) -> None:
+    """Add or update a property in configuration.properties."""
+    escaped_key = re.escape(key).replace("/", "\\/")
+    escaped_value = value.replace("/", "\\/").replace("&", "\\&")
+
+    check = await ssh.run(env_id, f"grep -c '^{key}=' {BUILD_CONFIG_ABS} 2>/dev/null")
+    if check.ok and check.stdout.strip() not in ("0", ""):
+        # Property exists — update in place
+        await ssh.run_checked(
+            env_id,
+            f"sed -i 's/^{escaped_key}=.*/{escaped_key}={escaped_value}/' {BUILD_CONFIG_ABS}",
+        )
+    else:
+        # Property doesn't exist — append
+        await ssh.run_checked(
+            env_id,
+            f"echo '{key}={value}' >> {BUILD_CONFIG_ABS}",
+        )
+
+
+async def _remove_build_config_prop(env_id: str, key: str) -> None:
+    """Remove a property from configuration.properties if it exists."""
+    escaped_key = re.escape(key).replace("/", "\\/")
+    await ssh.run(
+        env_id,
+        f"sed -i '/^{escaped_key}=/d' {BUILD_CONFIG_ABS}",
+    )
+
+
+@mcp.tool()
+async def ct_log_status(env_id: str) -> str:
+    """Check CT (Financials BL) logging status on a QAD environment.
+
+    Reports:
+    - Current debug level, directory, and login filter from configuration.properties
+    - Applied values from cbserver.xml
+    - Whether CT logging is active
+    - Recent CT log files in the debug directory
+
+    Args:
+        env_id: Environment identifier (e.g. 'als2moherp5wcy')
+    """
+    env_id = _validate_env_id(env_id)
+    hostname = resolve_hostname(env_id)
+
+    # Read configuration.properties for fin.cbserverxml.* props
+    config_result = await ssh.run(
+        env_id,
+        f"grep 'fin.cbserverxml' {BUILD_CONFIG_ABS} 2>/dev/null",
+    )
+
+    # Find and read cbserver.xml
+    xml_path = await _find_cbserver_xml(env_id)
+    xml_info = ""
+    if xml_path:
+        xml_result = await ssh.run(
+            env_id,
+            f"grep -E '<Debug(Level|Directory|Login)>' {xml_path} 2>/dev/null",
+        )
+        xml_info = xml_result.stdout.strip() if xml_result.ok else "(could not read)"
+    else:
+        xml_info = "(cbserver.xml not found)"
+
+    # Determine debug directory and list log files
+    debug_dir = await _get_ct_debug_directory(env_id)
+    log_list = await ssh.run(
+        env_id,
+        f"ls -lhtr {debug_dir}/ct*.log {debug_dir}/ServerLog.csv "
+        f"{debug_dir}/UnitTestReport.txt 2>/dev/null | tail -n 20",
+    )
+
+    # Parse current level
+    level_str = "not set"
+    is_active = False
+    if config_result.ok:
+        for line in config_result.stdout.splitlines():
+            if CT_LOG_LEVEL_PROP in line and "=" in line:
+                val = line.split("=", 1)[1].strip()
+                level_str = val
+                try:
+                    is_active = int(val) > 0
+                except ValueError:
+                    pass
+
+    # Build output
+    sections = [f"# CT Log Status: {hostname}\n"]
+
+    sections.append(f"## Status: {'ENABLED (level {level_str})' if is_active else 'DISABLED'}\n")
+
+    sections.append("## configuration.properties (fin.cbserverxml.*)")
+    if config_result.ok and config_result.stdout.strip():
+        sections.append(config_result.stdout.strip())
+    else:
+        sections.append("  (no fin.cbserverxml.* properties found)")
+
+    sections.append(f"\n## cbserver.xml ({xml_path or 'not found'})")
+    sections.append(xml_info)
+
+    sections.append(f"\n## Debug directory: {debug_dir}")
+    if log_list.ok and log_list.stdout.strip():
+        sections.append(f"## Recent CT log files:\n{log_list.stdout.strip()}")
+    else:
+        sections.append("  (no CT log files found)")
+
+    sections.append(
+        "\n## Debug level reference (additive bitmask):\n"
+        "  +1  = Limited BL execution logging\n"
+        "  +2  = Extended BL execution logging\n"
+        "  +4  = Log parameter values\n"
+        "  +8  = Database access logging\n"
+        "  +16 = Detailed DB update logging\n"
+        "  +32 = Unit testing\n"
+        "  Common: 31 (all except unit testing)"
+    )
+
+    return "\n".join(sections)
+
+
+@mcp.tool()
+async def ct_log_enable(
+    env_id: str,
+    debug_level: int = 31,
+    debug_login: str | None = None,
+    trim_appserver: bool = True,
+) -> str:
+    """Enable CT (Financials BL) logging on a QAD environment.
+
+    Updates configuration.properties with the debug level, runs
+    yab fin-cbserver-xml-update to apply changes to cbserver.xml,
+    and optionally trims the Financials appserver to pick up the new config.
+
+    Debug level is a bitmask (add values together):
+      +1  = Limited BL execution logging (entry-level methods)
+      +2  = Extended BL execution logging (all methods)
+      +4  = Log parameter values of business methods
+      +8  = Database access logging (reads and updates)
+      +16 = Detailed database update logging (create/modify/delete)
+      +32 = Unit testing / performance analysis
+    Common: 31 (all except unit testing), 6 (extended + params)
+
+    This is a potentially destructive operation — requires user confirmation.
+
+    Args:
+        env_id: Environment identifier (e.g. 'als2moherp5wcy')
+        debug_level: CT log debug level bitmask (default 31 = all except unit testing)
+        debug_login: Optional login to filter logging to a specific user
+        trim_appserver: Whether to trim the Financials appserver after update (default True)
+    """
+    env_id = _validate_env_id(env_id)
+    hostname = resolve_hostname(env_id)
+
+    if debug_level < 1 or debug_level > 63:
+        return "Error: debug_level must be between 1 and 63 (bitmask of levels 1+2+4+8+16+32)."
+
+    sections = [f"# Enabling CT Logging on {hostname}\n"]
+
+    # Step 1: Set debug level in configuration.properties
+    await _set_build_config_prop(env_id, CT_LOG_LEVEL_PROP, str(debug_level))
+    sections.append(f"  Set {CT_LOG_LEVEL_PROP}={debug_level}")
+
+    # Step 2: Optionally set debug login
+    if debug_login:
+        await _set_build_config_prop(env_id, CT_LOG_LOGIN_PROP, debug_login)
+        sections.append(f"  Set {CT_LOG_LOGIN_PROP}={debug_login}")
+
+    # Step 3: Run yab fin-cbserver-xml-update
+    sections.append("\n## Running yab fin-cbserver-xml-update...")
+    result = await ssh.run(env_id, "yab fin-cbserver-xml-update", timeout=120.0)
+    if result.ok:
+        sections.append(f"  ✓ cbserver.xml updated successfully")
+        if result.stdout.strip():
+            sections.append(result.stdout.strip())
+    else:
+        output = result.stdout
+        if result.stderr:
+            output += f"\n{result.stderr}"
+        sections.append(f"  ✗ cbserver.xml update failed:\n{output}")
+        return "\n".join(sections)
+
+    # Step 4: Optionally trim appserver
+    if trim_appserver:
+        sections.append("\n## Trimming Financials appserver...")
+        trim_result = await ssh.run(env_id, "yab appserver-fin-trim", timeout=120.0)
+        if trim_result.ok:
+            sections.append("  ✓ Appserver trimmed — new agents will use updated config")
+        else:
+            sections.append(
+                f"  ⚠ Trim returned exit code {trim_result.exit_code}. "
+                "Agents may need manual restart to pick up changes."
+            )
+            if trim_result.stdout.strip():
+                sections.append(trim_result.stdout.strip())
+
+    # Report debug directory
+    debug_dir = await _get_ct_debug_directory(env_id)
+    sections.append(f"\n## CT log files will be written to: {debug_dir}")
+    sections.append("  Log filenames: ct<sessionid>.log")
+    sections.append(
+        "\nNote: CT logs are created per session. Use ct_log_list to find files "
+        "and ct_log_read to view them."
+    )
+
+    return "\n".join(sections)
+
+
+@mcp.tool()
+async def ct_log_disable(
+    env_id: str,
+    trim_appserver: bool = True,
+) -> str:
+    """Disable CT (Financials BL) logging on a QAD environment.
+
+    Sets the debug level to 0 in configuration.properties, removes the
+    debug login filter, runs yab fin-cbserver-xml-update, and optionally
+    trims the Financials appserver.
+
+    This is a potentially destructive operation — requires user confirmation.
+
+    Args:
+        env_id: Environment identifier (e.g. 'als2moherp5wcy')
+        trim_appserver: Whether to trim the Financials appserver after update (default True)
+    """
+    env_id = _validate_env_id(env_id)
+    hostname = resolve_hostname(env_id)
+
+    sections = [f"# Disabling CT Logging on {hostname}\n"]
+
+    # Set debug level to 0
+    await _set_build_config_prop(env_id, CT_LOG_LEVEL_PROP, "0")
+    sections.append(f"  Set {CT_LOG_LEVEL_PROP}=0")
+
+    # Remove debug login if present
+    await _remove_build_config_prop(env_id, CT_LOG_LOGIN_PROP)
+    sections.append(f"  Removed {CT_LOG_LOGIN_PROP} (if present)")
+
+    # Run yab fin-cbserver-xml-update
+    sections.append("\n## Running yab fin-cbserver-xml-update...")
+    result = await ssh.run(env_id, "yab fin-cbserver-xml-update", timeout=120.0)
+    if result.ok:
+        sections.append("  ✓ cbserver.xml updated successfully")
+        if result.stdout.strip():
+            sections.append(result.stdout.strip())
+    else:
+        output = result.stdout
+        if result.stderr:
+            output += f"\n{result.stderr}"
+        sections.append(f"  ✗ cbserver.xml update failed:\n{output}")
+        return "\n".join(sections)
+
+    # Optionally trim appserver
+    if trim_appserver:
+        sections.append("\n## Trimming Financials appserver...")
+        trim_result = await ssh.run(env_id, "yab appserver-fin-trim", timeout=120.0)
+        if trim_result.ok:
+            sections.append("  ✓ Appserver trimmed")
+        else:
+            sections.append(
+                f"  ⚠ Trim returned exit code {trim_result.exit_code}. "
+                "You may need to restart the appserver manually."
+            )
+
+    sections.append("\nCT logging is now disabled. Existing log files are preserved.")
+
+    return "\n".join(sections)
+
+
+@mcp.tool()
+async def ct_log_list(
+    env_id: str,
+    debug_directory: str | None = None,
+) -> str:
+    """List CT (Financials BL) log files on a QAD environment.
+
+    Searches the debug directory for ct*.log files, ServerLog.csv, and
+    UnitTestReport.txt. Shows file sizes and modification dates.
+
+    Args:
+        env_id: Environment identifier (e.g. 'als2moherp5wcy')
+        debug_directory: Override debug directory path. If not specified,
+                         auto-detected from cbserver.xml or configuration.properties.
+    """
+    env_id = _validate_env_id(env_id)
+    hostname = resolve_hostname(env_id)
+
+    if debug_directory:
+        debug_dir = debug_directory
+    else:
+        debug_dir = await _get_ct_debug_directory(env_id)
+
+    # List all CT log related files
+    result = await ssh.run(
+        env_id,
+        f"ls -lhtr {debug_dir}/ct*.log {debug_dir}/ServerLog.csv "
+        f"{debug_dir}/UnitTestReport.txt 2>/dev/null",
+    )
+
+    # Also count total files and disk usage
+    count_result = await ssh.run(
+        env_id,
+        f"find {debug_dir} -maxdepth 1 -name 'ct*.log' 2>/dev/null | wc -l",
+    )
+    du_result = await ssh.run(
+        env_id,
+        f"du -sh {debug_dir} 2>/dev/null",
+    )
+
+    sections = [f"# CT Log Files: {hostname}"]
+    sections.append(f"## Directory: {debug_dir}\n")
+
+    if du_result.ok and du_result.stdout.strip():
+        sections.append(f"Total directory size: {du_result.stdout.strip().split()[0]}")
+
+    ct_count = count_result.stdout.strip() if count_result.ok else "?"
+    sections.append(f"CT log file count: {ct_count}\n")
+
+    if result.ok and result.stdout.strip():
+        sections.append("## Files (oldest first):\n")
+        sections.append(result.stdout.strip())
+    else:
+        sections.append("(no CT log files found in this directory)")
+
+    return "\n".join(sections)
+
+
+@mcp.tool()
+async def ct_log_read(
+    env_id: str,
+    file_name: str,
+    lines: int = 200,
+    grep_pattern: str | None = None,
+) -> str:
+    """Read contents of a CT (Financials BL) log file.
+
+    Reads the specified CT log file from the debug directory. Supports
+    tailing a specific number of lines and optional grep filtering.
+
+    Args:
+        env_id: Environment identifier (e.g. 'als2moherp5wcy')
+        file_name: CT log file name (e.g. 'ct12345.log') or absolute path.
+                   If just a filename, it is resolved against the debug directory.
+        lines: Number of lines to retrieve (default 200, max 500)
+        grep_pattern: Optional pattern to filter log lines
+    """
+    env_id = _validate_env_id(env_id)
+    hostname = resolve_hostname(env_id)
+    lines = min(max(lines, 1), 500)
+
+    # Block shell injection in file_name and grep_pattern
+    for val, label in [(file_name, "file_name")]:
+        if any(c in val for c in [";", "|", "&", "`", "$", "(", ")"]):
+            return f"Error: Invalid characters in {label}."
+    if grep_pattern and any(c in grep_pattern for c in [";", "|", "&", "`", "$", "(", ")"]):
+        return "Error: Invalid characters in grep_pattern."
+
+    # Resolve file path
+    if file_name.startswith("/"):
+        file_path = file_name
+    else:
+        debug_dir = await _get_ct_debug_directory(env_id)
+        file_path = f"{debug_dir}/{file_name}"
+
+    # Verify file exists
+    check = await ssh.run(env_id, f"test -f '{file_path}' && echo found")
+    if not (check.ok and "found" in check.stdout):
+        return f"File not found: {file_path} on {hostname}"
+
+    # Get file size for context
+    size_result = await ssh.run(env_id, f"ls -lh '{file_path}' | awk '{{print $5}}'")
+    file_size = size_result.stdout.strip() if size_result.ok else "unknown"
+
+    # Read the file
+    if grep_pattern:
+        cmd = (
+            f"tail -n {lines * 5} '{file_path}' | "
+            f"grep -i '{grep_pattern}' | tail -n {lines}"
+        )
+    else:
+        cmd = f"tail -n {lines} '{file_path}'"
+
+    result = await ssh.run(env_id, cmd)
+
+    if not result.ok:
+        return f"Failed to read {file_path} on {hostname}: {result.stderr}"
+
+    if not result.stdout.strip():
+        qualifier = f" matching '{grep_pattern}'" if grep_pattern else ""
+        return f"No content{qualifier} found in {file_path} on {hostname}"
+
+    header = f"# CT Log: {file_name} on {hostname} (size: {file_size})"
+    if grep_pattern:
+        header += f" (filtered: '{grep_pattern}')"
+    header += f"\n# Showing last {lines} lines\n"
+
+    return f"{header}\n{result.stdout}"
 
 
 # ---------------------------------------------------------------------------
