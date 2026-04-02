@@ -30,19 +30,16 @@ Follow these steps to get the MCP server running on your machine:
    uv sync
    ```
 
-4. **Set your SSH credentials** (add to your `~/.zshrc` or `~/.bashrc`):
-   ```bash
-   export QAD_SSH_USERNAME="your-ssh-username"
-   export QAD_SSH_PASSWORD="your-ssh-password"
-   ```
+4. **Connect to your VPN** — environments are on the internal network.
 
-5. **Connect to your VPN** — environments are on the internal network.
-
-6. **Add the server to your AI client** — pick one:
+5. **Add the server to your AI client** — pick one:
 
    **Claude Code** (quickest):
    ```bash
-   claude mcp add qad-env -- uv run --directory /path/to/qad-env-mcp qad-env-mcp
+   claude mcp add qad-env \
+     -e QAD_SSH_USERNAME=your-username \
+     -e QAD_SSH_PASSWORD=your-password \
+     -- uv run --directory /path/to/qad-env-mcp qad-env-mcp
    ```
 
    **Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -77,7 +74,7 @@ Follow these steps to get the MCP server running on your machine:
    }
    ```
 
-7. **Try it out** — open your AI client and ask:
+6. **Try it out** — open your AI client and ask:
    > "Check if als2moherp5wcy is reachable"
 
    If you get a response, you're all set.
